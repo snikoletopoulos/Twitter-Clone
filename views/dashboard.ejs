@@ -7,7 +7,7 @@
     </div>
     <h3 class="mt-6 text-center text-xl leading-9 font-extrabold text-gray-900">Follow someone new</h3>
     <ul class="mt-6">
-      <% for (const user in users) { %>
+      <% for (const user of users) { %>
         <li class="text-center text-xl leading-9 font-extrabold text-gray-600">
           <form action="/follow" method="POST">
             <input type="hidden" name="username" value="user">
