@@ -100,3 +100,11 @@ const port = 3000;
 app.listen(port, (req, res) => {
 	console.log(`Server running in port ${port}`);
 });
+
+app.get("/post", (req, res) => {
+	if (req.session.userid) {
+		res.render("post");
+	} else {
+		res.render("login");
+	}
+});
