@@ -31,7 +31,13 @@ app.use(
 
 app.get("/", (req, res) => {
 	if (req.session.userid) {
-		res.render("dashboard");
+		client.hkeys("users", (err, users) => {
+			console.log(users);
+			for (const user of users) {
+				console.log(user, users);
+			}
+			res.render("dashboard", { users });
+		});
 	} else {
 		res.render("login");
 	}
@@ -80,7 +86,9 @@ app.post("/", async (req, res) => {
 	const saveSessionAndRenderDashboard = userid => {
 		req.session.userid = userid;
 		req.session.save();
-		res.render("dashboard");
+		client.hkeys("users", (err, users) => {
+			res.render("dashboard", { users: users });
+		});
 	};
 
 	console.log(req.body, username, password);
