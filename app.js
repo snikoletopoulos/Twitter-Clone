@@ -126,7 +126,7 @@ app.post("/", async (req, res) => {
 		req.session.userid = userid;
 		req.session.save();
 		const users = await ahkeys("users");
-		res.render("dashboard", { users: users });
+		res.redirect("/");
 	};
 
 	const userId = await ahget("users", username);
