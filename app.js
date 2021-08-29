@@ -108,3 +108,29 @@ app.get("/post", (req, res) => {
 		res.render("login");
 	}
 });
+
+app.post("/post", (req, res) => {
+	if (!req.session.userid) {
+		res.render("login");
+	}
+
+	const { message } = req.body;
+
+	client.incr("postid", async (err, postid) => {
+		try {
+			client.hmset(
+				`post:${postid}`,
+				"userid",
+				req.session.userid,
+				"message",
+				message,
+				"timestamp",
+				Date.now()
+			);
+
+			res.render("dashboard");
+		} catch (err) {
+			console.error(err);
+		}
+	});
+});
