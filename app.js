@@ -48,12 +48,12 @@ app.get("/", async (req, res) => {
 			const users = await ahkeys("users");
 
 			const timeline = [];
-			const post = await alrange(`timeline${currentUserName}`, 0, 100);
+			const posts = await alrange(`timeline:${currentUserName}`, 0, 100);
 			for (const post of posts) {
 				const timestamp = await ahget(`post:${post}`, "timestamp");
 				const timeString = formatDistance(
 					new Date(),
-					new Date(pareseInt(timestamp))
+					new Date(parseInt(timestamp))
 				);
 				timeline.push({
 					message: await ahget(`post:${post}`, "message"),
@@ -66,6 +66,8 @@ app.get("/", async (req, res) => {
 				users: users.filter(
 					user => user !== currentUserName && following.indexOf(user) === -1
 				),
+				currentUserName,
+				timeline,
 			});
 		} catch (err) {
 			console.error(err);
@@ -162,8 +164,8 @@ app.post("/post", async (req, res) => {
 		const postid = await aincr("postid");
 		client.hmset(
 			`post:${postid}`,
-			"userid",
-			req.session.userid,
+			"username",
+			currentUserName,
 			"message",
 			message,
 			"timestamp",
@@ -172,7 +174,7 @@ app.post("/post", async (req, res) => {
 		client.lpush(`timeline:${currentUserName}`, postid);
 
 		const followers = await asmembers(`followers:${currentUserName}`);
-		for (const followers of followers) {
+		for (const follower of followers) {
 			client.lpush(`timeline:${follower}`, postid);
 		}
 
