@@ -5,10 +5,16 @@ const redis = require("redis");
 const bcrypt = require("bcrypt");
 const session = require("express-session");
 const RedisStore = require("connect-redis")(session);
-
-const client = redis.createClient();
+const { promisify } = require("util");
 
 const app = express();
+const client = redis.createClient();
+
+const ahget = promisify(client.hget).bind(client);
+const asmembers = promisify(client.smembers).bind(client);
+const ahkeys = promisify(client.hkeys).bind(client);
+const aincr = promisify(client.incr).bind(client);
+const alrange = promisify(client.lrange).bind(client);
 
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
@@ -29,24 +35,24 @@ app.use(
 	})
 );
 
-app.get("/", (req, res) => {
+app.get("/", async (req, res) => {
 	if (req.session.userid) {
-		client.hget(
-			`user:${req.session.userid}`,
-			"username",
-			(err, currentUserName) => {
-				client.smembers(`following:${currentUserName}`, (err, following) => {
-					client.hkeys("users", (err, users) => {
-						res.render("dashboard", {
-							users: users.filter(
-								user =>
-									user !== currentUserName && following.indexOf(user) === -1
-							),
-						});
-					});
-				});
-			}
-		);
+		try {
+			const currentUserName = await ahget(
+				`user:${req.session.userid}`,
+				"username"
+			);
+
+			const following = await asmembers(`following:${currentUserName}`);
+			const users = await ahkeys("users");
+			res.render("dashboard", {
+				users: users.filter(
+					user => user !== currentUserName && following.indexOf(user) === -1
+				),
+			});
+		} catch (err) {
+			console.error(err);
+		}
 	} else {
 		res.render("login");
 	}
@@ -64,20 +70,19 @@ app.post("/", async (req, res) => {
 
 	// Functions
 	const handleSignUp = async (username, password) => {
-		client.incr("userid", async (err, userid) => {
-			try {
-				client.hset("users", username, userid);
+		try {
+			const userid = await aincr("userid");
+			client.hset("users", username, userid);
 
-				const saltRounds = 10;
-				const hash = await bcrypt.hash(password, saltRounds);
+			const saltRounds = 10;
+			const hash = await bcrypt.hash(password, saltRounds);
 
-				client.hmset(`user:${userid}`, "hash", hash, "username", username);
+			client.hmset(`user:${userid}`, "hash", hash, "username", username);
 
-				saveSessionAndRenderDashboard(userid);
-			} catch (err) {
-				console.error(err);
-			}
-		});
+			saveSessionAndRenderDashboard(userid);
+		} catch (err) {
+			console.error(err);
+		}
 	};
 
 	const handleSignIn = (userid, password) => {
@@ -100,23 +105,21 @@ app.post("/", async (req, res) => {
 		});
 	};
 
-	const saveSessionAndRenderDashboard = userid => {
+	const saveSessionAndRenderDashboard = async userid => {
 		req.session.userid = userid;
 		req.session.save();
-		client.hkeys("users", (err, users) => {
-			res.render("dashboard", { users: users });
-		});
+		const users = await ahkeys("users");
+		res.render("dashboard", { users: users });
 	};
 
-	client.hget("users", username, (err, userId) => {
-		if (!userId) {
-			// Sign Up process
-			handleSignUp(username, password);
-		} else {
-			// Sign in process
-			handleSignIn(userId, password);
-		}
-	});
+	const userId = await ahget("users", username);
+	if (!userId) {
+		// Sign Up process
+		handleSignUp(username, password);
+	} else {
+		// Sign in process
+		handleSignIn(userId, password);
+	}
 });
 
 app.get("/post", (req, res) => {
@@ -127,33 +130,32 @@ app.get("/post", (req, res) => {
 	}
 });
 
-app.post("/post", (req, res) => {
+app.post("/post", async (req, res) => {
 	if (!req.session.userid) {
 		res.render("login");
 	}
 
 	const { message } = req.body;
 
-	client.incr("postid", async (err, postid) => {
-		try {
-			client.hmset(
-				`post:${postid}`,
-				"userid",
-				req.session.userid,
-				"message",
-				message,
-				"timestamp",
-				Date.now()
-			);
+	try {
+		const postid = await aincr("postid");
+		client.hmset(
+			`post:${postid}`,
+			"userid",
+			req.session.userid,
+			"message",
+			message,
+			"timestamp",
+			Date.now()
+		);
 
-			res.render("dashboard");
-		} catch (err) {
-			console.error(err);
-		}
-	});
+		res.render("dashboard");
+	} catch (err) {
+		console.error(err);
+	}
 });
 
-app.post("/follow", (req, res) => {
+app.post("/follow", async (req, res) => {
 	if (!req.session.userid) {
 		res.render("login");
 		return;
@@ -161,18 +163,16 @@ app.post("/follow", (req, res) => {
 
 	const { username } = req.body;
 
-	client.hget(
-		`user:${req.session.userid}`,
-		"username",
-		(err, currentUserName) => {
-			try {
-				client.sadd(`following:${currentUserName}`, username);
-				client.sadd(`followers:${username}`, currentUserName);
-			} catch (err) {
-				console.error(err);
-			}
-		}
-	);
+	try {
+		const currentUserName = await ahget(
+			`user:${req.session.userid}`,
+			"username"
+		);
+		client.sadd(`following:${currentUserName}`, username);
+		client.sadd(`followers:${username}`, currentUserName);
+	} catch (err) {
+		console.error(err);
+	}
 
 	res.redirect("/");
 });
