@@ -149,7 +149,7 @@ app.post("/post", async (req, res) => {
 			Date.now()
 		);
 
-		res.render("dashboard");
+		res.redirect("/");
 	} catch (err) {
 		console.error(err);
 	}
