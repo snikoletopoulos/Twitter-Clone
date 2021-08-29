@@ -56,29 +56,37 @@ app.post("/", async (req, res) => {
 	// Functions
 	const handleSignUp = async (username, password) => {
 		client.incr("userid", async (err, userid) => {
-			client.hset("users", username, userid);
+			try {
+				client.hset("users", username, userid);
 
-			const saltRounds = 10;
-			const hash = await bcrypt.hash(password, saltRounds);
+				const saltRounds = 10;
+				const hash = await bcrypt.hash(password, saltRounds);
 
-			client.hset(`user:${userid}`, "hash", hash, "username", username);
+				client.hmset(`user:${userid}`, "hash", hash, "username", username);
 
-			saveSessionAndRenderDashboard(userid);
+				saveSessionAndRenderDashboard(userid);
+			} catch (err) {
+				console.error(err);
+			}
 		});
 	};
 
 	const handleSignIn = (userid, password) => {
 		client.hget(`user:${userid}`, "hash", async (err, hash) => {
-			const result = await bcrypt.compare(password, hash);
-			if (result) {
-				// Password correct
-				saveSessionAndRenderDashboard(userid);
-			} else {
-				// Password incorect
-				res.render("error", {
-					message: "Incorrect password",
-				});
-				return;
+			try {
+				const result = await bcrypt.compare(password, hash);
+				if (result) {
+					// Password correct
+					saveSessionAndRenderDashboard(userid);
+				} else {
+					// Password incorect
+					res.render("error", {
+						message: "Incorrect password",
+					});
+					return;
+				}
+			} catch (err) {
+				console.error(err);
 			}
 		});
 	};
@@ -90,8 +98,6 @@ app.post("/", async (req, res) => {
 			res.render("dashboard", { users: users });
 		});
 	};
-
-	console.log(req.body, username, password);
 
 	client.hget("users", username, (err, userId) => {
 		if (!userId) {
