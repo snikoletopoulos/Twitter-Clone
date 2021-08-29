@@ -6,6 +6,7 @@ const bcrypt = require("bcrypt");
 const session = require("express-session");
 const RedisStore = require("connect-redis")(session);
 const { promisify } = require("util");
+const { formatDistance } = require("date-fns");
 
 const app = express();
 const client = redis.createClient();
@@ -45,6 +46,22 @@ app.get("/", async (req, res) => {
 
 			const following = await asmembers(`following:${currentUserName}`);
 			const users = await ahkeys("users");
+
+			const timeline = [];
+			const post = await alrange(`timeline${currentUserName}`, 0, 100);
+			for (const post of posts) {
+				const timestamp = await ahget(`post:${post}`, "timestamp");
+				const timeString = formatDistance(
+					new Date(),
+					new Date(pareseInt(timestamp))
+				);
+				timeline.push({
+					message: await ahget(`post:${post}`, "message"),
+					author: await ahget(`post:${post}`, "username"),
+					timeString: timeString,
+				});
+			}
+
 			res.render("dashboard", {
 				users: users.filter(
 					user => user !== currentUserName && following.indexOf(user) === -1
@@ -138,6 +155,10 @@ app.post("/post", async (req, res) => {
 	const { message } = req.body;
 
 	try {
+		const currentUserName = await ahget(
+			`user:${req.session.userid}`,
+			"username"
+		);
 		const postid = await aincr("postid");
 		client.hmset(
 			`post:${postid}`,
@@ -148,6 +169,12 @@ app.post("/post", async (req, res) => {
 			"timestamp",
 			Date.now()
 		);
+		client.lpush(`timeline:${currentUserName}`, postid);
+
+		const followers = await asmembers(`followers:${currentUserName}`);
+		for (const followers of followers) {
+			client.lpush(`timeline:${follower}`, postid);
+		}
 
 		res.redirect("/");
 	} catch (err) {
