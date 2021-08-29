@@ -31,13 +31,22 @@ app.use(
 
 app.get("/", (req, res) => {
 	if (req.session.userid) {
-		client.hkeys("users", (err, users) => {
-			console.log(users);
-			for (const user of users) {
-				console.log(user, users);
+		client.hget(
+			`user:${req.session.userid}`,
+			"username",
+			(err, currentUserName) => {
+				client.smembers(`following:${currentUserName}`, (err, following) => {
+					client.hkeys("users", (err, users) => {
+						res.render("dashboard", {
+							users: users.filter(
+								user =>
+									user !== currentUserName && following.indexOf(user) === -1
+							),
+						});
+					});
+				});
 			}
-			res.render("dashboard", { users });
-		});
+		);
 	} else {
 		res.render("login");
 	}
@@ -142,6 +151,30 @@ app.post("/post", (req, res) => {
 			console.error(err);
 		}
 	});
+});
+
+app.post("/follow", (req, res) => {
+	if (!req.session.userid) {
+		res.render("login");
+		return;
+	}
+
+	const { username } = req.body;
+
+	client.hget(
+		`user:${req.session.userid}`,
+		"username",
+		(err, currentUserName) => {
+			try {
+				client.sadd(`following:${currentUserName}`, username);
+				client.sadd(`followers:${username}`, currentUserName);
+			} catch (err) {
+				console.error(err);
+			}
+		}
+	);
+
+	res.redirect("/");
 });
 
 const port = 3000;
